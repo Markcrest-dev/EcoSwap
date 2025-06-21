@@ -1,0 +1,5 @@
+
+main-world.63f7dde8.js:1 Injecting PWR Provider...
+main-world.63f7dde8.js:1 PWR Provider injected successfully pwr 0.9.0
+main.js:1 Uncaught SyntaxError: Unexpected token '<' (at main.js:1:1)
+handle-main-world.c3dbfe7f.js:1 Content script loaded in main world
