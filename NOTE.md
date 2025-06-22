@@ -1,6 +1,7 @@
-Change the UI
-Create a database to store user info
-Create a login and register page
+<!-- Change the UI  -->
+<!-- Create a database to store user info -->
+<!-- Create a login and register page -->
+Create a user dashboard
 create an admin dashboard
 generate a report of the items shared
 add a map to show the location of the items

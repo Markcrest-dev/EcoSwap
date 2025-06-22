@@ -1,9 +1,11 @@
 
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 function Header({ setActiveCategory, activeCategory, searchTerm, setSearchTerm }) {
   const location = useLocation();
   const isHomePage = location.pathname === '/';
+  const { user, logout, isAuthenticated } = useAuth();
   const categories = [
     { id: 'all', name: 'All Items' },
     { id: 'clothing', name: 'Clothing' },
@@ -26,9 +28,31 @@ function Header({ setActiveCategory, activeCategory, searchTerm, setSearchTerm }
         <Link to="/" className={`nav-link ${isHomePage ? 'active' : ''}`}>
           Browse Items
         </Link>
-        <Link to="/share" className={`nav-link ${!isHomePage ? 'active' : ''}`}>
+        <Link to="/share" className={`nav-link ${location.pathname === '/share' ? 'active' : ''}`}>
           Share Item
         </Link>
+      </nav>
+
+      <nav className="auth-nav">
+        {isAuthenticated ? (
+          <>
+            <span className="user-greeting">
+              Hello, {user.firstName}!
+            </span>
+            <button onClick={logout} className="auth-link logout-btn">
+              Logout
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login" className={`auth-link ${location.pathname === '/login' ? 'active' : ''}`}>
+              Login
+            </Link>
+            <Link to="/register" className={`auth-link ${location.pathname === '/register' ? 'active' : ''}`}>
+              Register
+            </Link>
+          </>
+        )}
       </nav>
 
       {isHomePage && (
