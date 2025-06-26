@@ -110,12 +110,19 @@ function ForgotPasswordPage() {
             {errors.email && <span className="error-message">{errors.email}</span>}
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="auth-submit-btn"
             disabled={isLoading}
           >
-            {isLoading ? 'Sending...' : 'Send Reset Instructions'}
+            {isLoading ? (
+              <>
+                <span className="button-spinner"></span>
+                Sending...
+              </>
+            ) : (
+              'Send Reset Instructions'
+            )}
           </button>
         </form>
 

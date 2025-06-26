@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import CharityService from '../services/charityService';
 
 function ItemForm({ addItem }) {
   const [title, setTitle] = useState('');
@@ -12,6 +13,27 @@ function ItemForm({ addItem }) {
   const [contactPhone, setContactPhone] = useState('');
   const [contactMethod, setContactMethod] = useState('email');
 
+  // Charity donation fields
+  const [enableCharity, setEnableCharity] = useState(false);
+  const [selectedCharity, setSelectedCharity] = useState('');
+  const [donationAmount, setDonationAmount] = useState('');
+  const [charities, setCharities] = useState([]);
+
+  // Load charities on component mount
+  useEffect(() => {
+    const loadCharities = async () => {
+      try {
+        const charityService = new CharityService();
+        const charitiesData = await charityService.getAllCharities();
+        setCharities(charitiesData.filter(c => c.status === 'active'));
+      } catch (error) {
+        console.error('Error loading charities:', error);
+      }
+    };
+
+    loadCharities();
+  }, []);
+
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -24,7 +46,7 @@ function ItemForm({ addItem }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title || !category || !location || !contactName) return;
 
@@ -42,7 +64,19 @@ function ItemForm({ addItem }) {
       return;
     }
 
-    addItem({
+    // Validate charity donation if enabled
+    if (enableCharity) {
+      if (!selectedCharity) {
+        alert('Please select a charity for your donation');
+        return;
+      }
+      if (!donationAmount || parseFloat(donationAmount) <= 0) {
+        alert('Please enter a valid donation amount');
+        return;
+      }
+    }
+
+    const newItem = {
       title,
       description,
       category,
@@ -54,8 +88,36 @@ function ItemForm({ addItem }) {
         phone: contactPhone,
         preferredMethod: contactMethod
       },
-      date: new Date().toISOString()
-    });
+      date: new Date().toISOString(),
+      charity: enableCharity ? {
+        charityId: selectedCharity,
+        donationAmount: parseFloat(donationAmount)
+      } : null
+    };
+
+    // Process charity donation if enabled
+    if (enableCharity && selectedCharity && donationAmount) {
+      try {
+        const charityService = new CharityService();
+        await charityService.createDonation({
+          charityId: selectedCharity,
+          amount: parseFloat(donationAmount),
+          itemId: newItem.id || `item-${Date.now()}`,
+          itemTitle: title,
+          donorId: contactEmail,
+          donorName: contactName,
+          type: 'item-share',
+          message: `Donated in connection with sharing "${title}"`
+        });
+
+        alert(`Item shared successfully! Thank you for your $${donationAmount} donation! 🌱💝`);
+      } catch (error) {
+        console.error('Error processing donation:', error);
+        alert('Item shared successfully, but there was an issue processing the donation. Please try donating separately.');
+      }
+    }
+
+    addItem(newItem);
 
     // Reset form
     setTitle('');
@@ -68,6 +130,9 @@ function ItemForm({ addItem }) {
     setContactEmail('');
     setContactPhone('');
     setContactMethod('email');
+    setEnableCharity(false);
+    setSelectedCharity('');
+    setDonationAmount('');
   };
 
   return (
@@ -196,7 +261,107 @@ function ItemForm({ addItem }) {
           )}
         </div>
 
-        <button type="submit" className="submit-btn">Share Item</button>
+        {/* Charity Donation Section */}
+        <div className="form-section charity-section">
+          <h3>💝 Support a Charity (Optional)</h3>
+          <p>Make a donation to a charity when sharing your item to maximize your positive impact!</p>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={enableCharity}
+                onChange={(e) => setEnableCharity(e.target.checked)}
+              />
+              <span className="checkbox-text">I want to make a charity donation with this item share</span>
+            </label>
+          </div>
+
+          {enableCharity && (
+            <div className="charity-form">
+              <div className="form-group">
+                <label htmlFor="selectedCharity">Choose a Charity *</label>
+                <select
+                  id="selectedCharity"
+                  value={selectedCharity}
+                  onChange={(e) => setSelectedCharity(e.target.value)}
+                  required={enableCharity}
+                >
+                  <option value="">Select a charity...</option>
+                  {charities.map(charity => (
+                    <option key={charity.id} value={charity.id}>
+                      {charity.logo} {charity.name} - {charity.category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="donationAmount">Donation Amount ($) *</label>
+                <input
+                  type="number"
+                  id="donationAmount"
+                  value={donationAmount}
+                  onChange={(e) => setDonationAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  min="1"
+                  step="0.01"
+                  required={enableCharity}
+                />
+                <div className="suggested-amounts">
+                  <span>Quick amounts:</span>
+                  {[5, 10, 25, 50].map(amount => (
+                    <button
+                      key={amount}
+                      type="button"
+                      className="amount-btn"
+                      onClick={() => setDonationAmount(amount.toString())}
+                    >
+                      ${amount}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedCharity && (
+                <div className="charity-preview">
+                  {(() => {
+                    const charity = charities.find(c => c.id === selectedCharity);
+                    return charity ? (
+                      <div className="charity-info">
+                        <div className="charity-header">
+                          <span className="charity-logo">{charity.logo}</span>
+                          <div className="charity-details">
+                            <h4>{charity.name}</h4>
+                            <p>{charity.description}</p>
+                            <div className="charity-stats">
+                              <span>Rating: {charity.rating}⭐</span>
+                              <span>Transparency: {charity.transparency}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              <div className="charity-impact">
+                <p>
+                  💡 <strong>Your impact:</strong> By donating while sharing items, you're
+                  reducing waste AND supporting important causes in your community!
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button type="submit" className="submit-btn">
+          {enableCharity && donationAmount
+            ? `Share Item & Donate $${donationAmount}`
+            : 'Share Item'
+          }
+        </button>
       </form>
     </div>
   );

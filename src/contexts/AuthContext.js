@@ -103,6 +103,10 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     setUser(null);
+    // Clear any cached data
+    localStorage.removeItem('ecoswap-user');
+    // Navigation will be handled by the ProtectedRoute component
+    // which will redirect to login when user becomes null
   };
 
   const forgotPassword = async (email) => {

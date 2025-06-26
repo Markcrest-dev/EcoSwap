@@ -7,23 +7,39 @@ class BrowserDbService {
   }
 
   async initialize() {
+    if (this.db) {
+      console.log('Database already initialized');
+      return this.db;
+    }
+
     return new Promise((resolve, reject) => {
+      console.log('Initializing IndexedDB...');
       const request = indexedDB.open(this.dbName, this.version);
 
       request.onerror = () => {
-        reject(new Error('Failed to open database'));
+        console.error('Failed to open database:', request.error);
+        reject(new Error('Failed to open database: ' + request.error?.message));
       };
 
       request.onsuccess = (event) => {
         this.db = event.target.result;
+        console.log('Database initialized successfully');
+
+        // Add error handler for the database connection
+        this.db.onerror = (event) => {
+          console.error('Database error:', event.target.error);
+        };
+
         resolve(this.db);
       };
 
       request.onupgradeneeded = (event) => {
+        console.log('Upgrading database schema...');
         const db = event.target.result;
 
         // Create users store
         if (!db.objectStoreNames.contains('users')) {
+          console.log('Creating users store...');
           const userStore = db.createObjectStore('users', { keyPath: 'id', autoIncrement: true });
           userStore.createIndex('email', 'email', { unique: true });
           userStore.createIndex('resetToken', 'resetToken', { unique: false });
@@ -31,26 +47,25 @@ class BrowserDbService {
 
         // Create user profiles store
         if (!db.objectStoreNames.contains('userProfiles')) {
+          console.log('Creating userProfiles store...');
           const profileStore = db.createObjectStore('userProfiles', { keyPath: 'id', autoIncrement: true });
           profileStore.createIndex('userId', 'userId', { unique: true });
         }
+
+        console.log('Database schema upgrade completed');
       };
     });
   }
 
   async addUser(userData) {
-    const transaction = this.db.transaction(['users', 'userProfiles'], 'readwrite');
-    const userStore = transaction.objectStore('users');
-    const profileStore = transaction.objectStore('userProfiles');
-
     try {
-      // Check if user already exists
+      // Check if user already exists BEFORE starting transaction
       const existingUser = await this.getUserByEmail(userData.email);
       if (existingUser) {
         throw new Error('User with this email already exists');
       }
 
-      // Hash password (simple browser-compatible hashing)
+      // Hash password BEFORE starting transaction
       const hashedPassword = await this.hashPassword(userData.password);
 
       const user = {
@@ -67,12 +82,38 @@ class BrowserDbService {
         updatedAt: new Date().toISOString()
       };
 
+      // Now start the transaction for the actual database operations
       return new Promise((resolve, reject) => {
+        const transaction = this.db.transaction(['users', 'userProfiles'], 'readwrite');
+        const userStore = transaction.objectStore('users');
+        const profileStore = transaction.objectStore('userProfiles');
+
+        // Handle transaction completion
+        transaction.oncomplete = async () => {
+          try {
+            // Fetch the complete user data after transaction completes
+            const fullUser = await this.getUserById(userId);
+            resolve(fullUser);
+          } catch (error) {
+            reject(new Error('Failed to retrieve created user: ' + error.message));
+          }
+        };
+
+        transaction.onerror = () => {
+          reject(new Error('Transaction failed: ' + transaction.error?.message));
+        };
+
+        transaction.onabort = () => {
+          reject(new Error('Transaction was aborted'));
+        };
+
+        let userId;
+
         const userRequest = userStore.add(user);
-        
+
         userRequest.onsuccess = (event) => {
-          const userId = event.target.result;
-          
+          userId = event.target.result;
+
           // Create user profile
           const profile = {
             userId,
@@ -90,19 +131,14 @@ class BrowserDbService {
           };
 
           const profileRequest = profileStore.add(profile);
-          
-          profileRequest.onsuccess = async () => {
-            const fullUser = await this.getUserById(userId);
-            resolve(fullUser);
-          };
-          
+
           profileRequest.onerror = () => {
-            reject(new Error('Failed to create user profile'));
+            transaction.abort();
           };
         };
-        
+
         userRequest.onerror = () => {
-          reject(new Error('Failed to create user'));
+          transaction.abort();
         };
       });
     } catch (error) {
@@ -111,31 +147,47 @@ class BrowserDbService {
   }
 
   async getUserByEmail(email) {
-    const transaction = this.db.transaction(['users'], 'readonly');
-    const store = transaction.objectStore('users');
-    const index = store.index('email');
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
 
     return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['users'], 'readonly');
+      const store = transaction.objectStore('users');
+      const index = store.index('email');
+
+      transaction.onerror = () => {
+        reject(new Error('Transaction failed: ' + transaction.error?.message));
+      };
+
       const request = index.get(email);
-      
+
       request.onsuccess = () => {
         resolve(request.result);
       };
-      
+
       request.onerror = () => {
-        reject(new Error('Failed to get user by email'));
+        reject(new Error('Failed to get user by email: ' + request.error?.message));
       };
     });
   }
 
   async getUserById(id) {
-    const transaction = this.db.transaction(['users', 'userProfiles'], 'readonly');
-    const userStore = transaction.objectStore('users');
-    const profileStore = transaction.objectStore('userProfiles');
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
 
     return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['users', 'userProfiles'], 'readonly');
+      const userStore = transaction.objectStore('users');
+      const profileStore = transaction.objectStore('userProfiles');
+
+      transaction.onerror = () => {
+        reject(new Error('Transaction failed: ' + transaction.error?.message));
+      };
+
       const userRequest = userStore.get(id);
-      
+
       userRequest.onsuccess = () => {
         const user = userRequest.result;
         if (!user) {
@@ -146,10 +198,10 @@ class BrowserDbService {
         // Get user profile
         const profileIndex = profileStore.index('userId');
         const profileRequest = profileIndex.get(id);
-        
+
         profileRequest.onsuccess = () => {
           const profile = profileRequest.result;
-          
+
           // Combine user and profile data
           const fullUser = {
             ...user,
@@ -159,21 +211,21 @@ class BrowserDbService {
             avatar: profile?.avatar,
             preferences: profile?.preferences ? JSON.parse(profile.preferences) : {}
           };
-          
+
           // Remove password from response
           delete fullUser.hashedPassword;
           resolve(fullUser);
         };
-        
+
         profileRequest.onerror = () => {
           // Return user without profile if profile fetch fails
           delete user.hashedPassword;
           resolve(user);
         };
       };
-      
+
       userRequest.onerror = () => {
-        reject(new Error('Failed to get user by ID'));
+        reject(new Error('Failed to get user by ID: ' + userRequest.error?.message));
       };
     });
   }
@@ -197,12 +249,20 @@ class BrowserDbService {
   }
 
   async updateUser(id, updates) {
-    const transaction = this.db.transaction(['users'], 'readwrite');
-    const store = transaction.objectStore('users');
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
 
     return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['users'], 'readwrite');
+      const store = transaction.objectStore('users');
+
+      transaction.onerror = () => {
+        reject(new Error('Transaction failed: ' + transaction.error?.message));
+      };
+
       const getRequest = store.get(id);
-      
+
       getRequest.onsuccess = () => {
         const user = getRequest.result;
         if (!user) {
@@ -217,18 +277,18 @@ class BrowserDbService {
         };
 
         const putRequest = store.put(updatedUser);
-        
+
         putRequest.onsuccess = () => {
           resolve(updatedUser);
         };
-        
+
         putRequest.onerror = () => {
-          reject(new Error('Failed to update user'));
+          reject(new Error('Failed to update user: ' + putRequest.error?.message));
         };
       };
-      
+
       getRequest.onerror = () => {
-        reject(new Error('Failed to get user for update'));
+        reject(new Error('Failed to get user for update: ' + getRequest.error?.message));
       };
     });
   }
@@ -269,6 +329,11 @@ class BrowserDbService {
 
   async seedDemoData() {
     try {
+      // Ensure database is ready before seeding
+      if (!this.db) {
+        throw new Error('Database not initialized');
+      }
+
       const existingUser = await this.getUserByEmail('demo@ecoswap.com');
       if (!existingUser) {
         await this.addUser({
@@ -281,6 +346,7 @@ class BrowserDbService {
       }
     } catch (error) {
       console.error('Error seeding demo data:', error);
+      // Don't throw the error to prevent app initialization failure
     }
   }
 }

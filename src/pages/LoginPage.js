@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 function LoginPage() {
@@ -11,6 +11,7 @@ function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -58,7 +59,9 @@ function LoginPage() {
     setIsLoading(false);
 
     if (result.success) {
-      navigate('/');
+      // Redirect to the intended destination or home page
+      const from = location.state?.from?.pathname || '/home';
+      navigate(from, { replace: true });
     } else {
       setErrors({ general: result.error });
     }
@@ -109,12 +112,19 @@ function LoginPage() {
             {errors.password && <span className="error-message">{errors.password}</span>}
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="auth-submit-btn"
             disabled={isLoading}
           >
-            {isLoading ? 'Signing In...' : 'Sign In'}
+            {isLoading ? (
+              <>
+                <span className="button-spinner"></span>
+                Signing In...
+              </>
+            ) : (
+              'Sign In'
+            )}
           </button>
         </form>
 

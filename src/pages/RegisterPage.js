@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 function RegisterPage() {
@@ -14,6 +14,7 @@ function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -76,7 +77,9 @@ function RegisterPage() {
     setIsLoading(false);
 
     if (result.success) {
-      navigate('/');
+      // Redirect to the intended destination or home page
+      const from = location.state?.from?.pathname || '/home';
+      navigate(from, { replace: true });
     } else {
       setErrors({ general: result.error });
     }
@@ -174,12 +177,19 @@ function RegisterPage() {
             {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="auth-submit-btn"
             disabled={isLoading}
           >
-            {isLoading ? 'Creating Account...' : 'Create Account'}
+            {isLoading ? (
+              <>
+                <span className="button-spinner"></span>
+                Creating Account...
+              </>
+            ) : (
+              'Create Account'
+            )}
           </button>
         </form>
 
